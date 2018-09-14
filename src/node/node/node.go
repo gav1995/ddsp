@@ -1,10 +1,10 @@
 package node
 
 import (
-	"time"
-
 	router "router/client"
 	"storage"
+	"sync"
+	"time"
 )
 
 // Config stores configuration for a Node service.
@@ -29,6 +29,10 @@ type Config struct {
 // Node is a Node service.
 type Node struct {
 	// TODO: implement
+	Store      sync.Map //[storage.RecordID][]byte
+	Mu         sync.Mutex
+	FHeartbeat bool
+	Conf       Config
 }
 
 // New creates a new Node with a given cfg.
@@ -36,7 +40,10 @@ type Node struct {
 // New создает новый Node с данным cfg.
 func New(cfg Config) *Node {
 	// TODO: implement
-	return nil
+	return &Node{
+		FHeartbeat: true,
+		Conf:       cfg,
+	}
 }
 
 // Hearbeats runs heartbeats from node to a router
@@ -46,6 +53,20 @@ func New(cfg Config) *Node {
 // через каждый интервал времени, заданный в cfg.Heartbeat.
 func (node *Node) Heartbeats() {
 	// TODO: implement
+	go func() {
+		for {
+			node.Mu.Lock()
+			if node.FHeartbeat == false {
+				node.Mu.Unlock()
+				break
+			}
+			node.Conf.Client.Heartbeat(node.Conf.Router, node.Conf.Addr)
+			node.Mu.Unlock()
+
+			time.Sleep(node.Conf.Heartbeat)
+		}
+	}()
+	return
 }
 
 // Stop stops heartbeats
@@ -53,6 +74,10 @@ func (node *Node) Heartbeats() {
 // Stop останавливает отправку heartbeats.
 func (node *Node) Stop() {
 	// TODO: implement
+	node.Mu.Lock()
+	node.FHeartbeat = false
+	node.Mu.Unlock()
+	return
 }
 
 // Put an item to the node if an item for the given key doesn't exist.
@@ -62,6 +87,10 @@ func (node *Node) Stop() {
 // не существует. Иначе вернуть ошибку storage.ErrRecordExists.
 func (node *Node) Put(k storage.RecordID, d []byte) error {
 	// TODO: implement
+	_, isLoad := node.Store.LoadOrStore(k, d)
+	if isLoad == true {
+		return storage.ErrRecordExists
+	}
 	return nil
 }
 
@@ -72,6 +101,12 @@ func (node *Node) Put(k storage.RecordID, d []byte) error {
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Del(k storage.RecordID) error {
 	// TODO: implement
+	_, isLoad := node.Store.Load(k)
+	if isLoad == true {
+		node.Store.Delete(k)
+	} else {
+		return storage.ErrRecordNotFound
+	}
 	return nil
 }
 
@@ -82,5 +117,11 @@ func (node *Node) Del(k storage.RecordID) error {
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
 	// TODO: implement
+	item, isLoad := node.Store.Load(k)
+	if isLoad {
+		return item.([]byte), nil
+	} else {
+		return nil, storage.ErrRecordNotFound
+	}
 	return nil, nil
 }
