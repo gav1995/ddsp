@@ -1,10 +1,11 @@
 package node
 
 import (
-	router "router/client"
-	"storage"
 	"sync"
 	"time"
+
+	router "router/client"
+	"storage"
 )
 
 // Config stores configuration for a Node service.
@@ -28,11 +29,11 @@ type Config struct {
 
 // Node is a Node service.
 type Node struct {
-	// TODO: implement
-	Store      sync.Map //[storage.RecordID][]byte
-	Mu         sync.Mutex
-	FHeartbeat bool
-	Conf       Config
+	store sync.Map
+	sync.Mutex
+	fHeartbeat bool
+	changeLock sync.Mutex
+	conf       Config
 }
 
 // New creates a new Node with a given cfg.
@@ -41,8 +42,8 @@ type Node struct {
 func New(cfg Config) *Node {
 	// TODO: implement
 	return &Node{
-		FHeartbeat: true,
-		Conf:       cfg,
+		fHeartbeat: true,
+		conf:       cfg,
 	}
 }
 
@@ -52,18 +53,17 @@ func New(cfg Config) *Node {
 // Hearbeats запускает отправку heartbeats от node к router
 // через каждый интервал времени, заданный в cfg.Heartbeat.
 func (node *Node) Heartbeats() {
-	// TODO: implement
 	go func() {
 		for {
-			node.Mu.Lock()
-			if node.FHeartbeat == false {
-				node.Mu.Unlock()
+			node.Lock()
+			if node.fHeartbeat == false {
+				node.Unlock()
 				break
 			}
-			node.Conf.Client.Heartbeat(node.Conf.Router, node.Conf.Addr)
-			node.Mu.Unlock()
+			node.conf.Client.Heartbeat(node.conf.Router, node.conf.Addr)
+			node.Unlock()
 
-			time.Sleep(node.Conf.Heartbeat)
+			time.Sleep(node.conf.Heartbeat)
 		}
 	}()
 	return
@@ -73,10 +73,9 @@ func (node *Node) Heartbeats() {
 //
 // Stop останавливает отправку heartbeats.
 func (node *Node) Stop() {
-	// TODO: implement
-	node.Mu.Lock()
-	node.FHeartbeat = false
-	node.Mu.Unlock()
+	node.Lock()
+	node.fHeartbeat = false
+	node.Unlock()
 	return
 }
 
@@ -86,9 +85,10 @@ func (node *Node) Stop() {
 // Put -- добавить запись в node, если запись для данного ключа
 // не существует. Иначе вернуть ошибку storage.ErrRecordExists.
 func (node *Node) Put(k storage.RecordID, d []byte) error {
-	// TODO: implement
-	_, isLoad := node.Store.LoadOrStore(k, d)
-	if isLoad == true {
+	node.changeLock.Lock()
+	_, load := node.store.LoadOrStore(k, d)
+	node.changeLock.Unlock()
+	if load == true {
 		return storage.ErrRecordExists
 	}
 	return nil
@@ -100,14 +100,15 @@ func (node *Node) Put(k storage.RecordID, d []byte) error {
 // Del -- удалить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Del(k storage.RecordID) error {
-	// TODO: implement
-	_, isLoad := node.Store.Load(k)
-	if isLoad == true {
-		node.Store.Delete(k)
-	} else {
-		return storage.ErrRecordNotFound
+	node.changeLock.Lock()
+	defer node.changeLock.Unlock()
+
+	_, ok := node.store.Load(k)
+	if ok == true {
+		node.store.Delete(k)
+		return nil
 	}
-	return nil
+	return storage.ErrRecordNotFound
 }
 
 // Get an item from the node if an item exists for the given key.
@@ -116,12 +117,11 @@ func (node *Node) Del(k storage.RecordID) error {
 // Get -- получить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
-	// TODO: implement
-	item, isLoad := node.Store.Load(k)
-	if isLoad {
+	item, ok := node.store.Load(k)
+	if ok {
 		return item.([]byte), nil
-	} else {
-		return nil, storage.ErrRecordNotFound
 	}
-	return nil, nil
+
+	return nil, storage.ErrRecordNotFound
+
 }
