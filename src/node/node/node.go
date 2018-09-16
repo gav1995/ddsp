@@ -29,10 +29,10 @@ type Config struct {
 
 // Node is a Node service.
 type Node struct {
-	store sync.Map
+	store map[storage.RecordID][]byte
 	sync.Mutex
 	fHeartbeat bool
-	changeLock sync.Mutex
+	changeLock sync.RWMutex
 	conf       Config
 }
 
@@ -44,6 +44,7 @@ func New(cfg Config) *Node {
 	return &Node{
 		fHeartbeat: true,
 		conf:       cfg,
+		store:      make(map[storage.RecordID][]byte),
 	}
 }
 
@@ -86,11 +87,12 @@ func (node *Node) Stop() {
 // не существует. Иначе вернуть ошибку storage.ErrRecordExists.
 func (node *Node) Put(k storage.RecordID, d []byte) error {
 	node.changeLock.Lock()
-	_, load := node.store.LoadOrStore(k, d)
-	node.changeLock.Unlock()
-	if load == true {
+	defer node.changeLock.Unlock()
+	_, ok := node.store[k]
+	if ok {
 		return storage.ErrRecordExists
 	}
+	node.store[k] = d
 	return nil
 }
 
@@ -103,9 +105,9 @@ func (node *Node) Del(k storage.RecordID) error {
 	node.changeLock.Lock()
 	defer node.changeLock.Unlock()
 
-	_, ok := node.store.Load(k)
-	if ok == true {
-		node.store.Delete(k)
+	_, ok := node.store[k]
+	if ok {
+		delete(node.store, k)
 		return nil
 	}
 	return storage.ErrRecordNotFound
@@ -117,9 +119,11 @@ func (node *Node) Del(k storage.RecordID) error {
 // Get -- получить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
-	item, ok := node.store.Load(k)
+	node.changeLock.RLock()
+	defer node.changeLock.RUnlock()
+	item, ok := node.store[k]
 	if ok {
-		return item.([]byte), nil
+		return item, nil
 	}
 
 	return nil, storage.ErrRecordNotFound
