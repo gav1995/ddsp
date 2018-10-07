@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"time"
+	"sync"
 
 	rclient "router/client"
 	"router/router"
@@ -38,15 +39,16 @@ type Config struct {
 
 // Frontend is a frontend service.
 type Frontend struct {
-	// TODO: implement
+	sync.RWMutex
+	conf Config
+
 }
 
 // New creates a new Frontend with a given cfg.
 //
 // New создает новый Frontend с данным cfg.
 func New(cfg Config) *Frontend {
-	// TODO: implement
-	return nil
+	return &Frontend{conf:cfg,}
 }
 
 // Put an item to the storage if an item for the given key doesn't exist.
@@ -55,8 +57,33 @@ func New(cfg Config) *Frontend {
 // Put -- добавить запись в хранилище, если запись для данного ключа
 // не существует. Иначе вернуть ошибку.
 func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
-	// TODO: implement
-	return nil
+	fe.Lock()
+	defer fe.Unlock()
+	nodes, err:=fe.conf.RC.NodesFind(fe.conf.Router,k)
+	if err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+	good := 0
+	var mu sync.Mutex
+	wg.Add(len(nodes))
+	for i := range(nodes){
+		go func(){
+			defer wg.Done()
+			err1 := fe.conf.NC.Put(nodes[i],k, d)
+			if(err1 != nil){
+				err = err1
+			} else {
+				mu.Lock()
+				good ++
+				mu.Unlock()
+			}
+			
+		}()
+	}
+
+	wg.Wait()
+	return err
 }
 
 // Del an item from the storage if an item exists for the given key.
@@ -65,8 +92,34 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 // Del -- удалить запись из хранилища, если запись для данного ключа
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Del(k storage.RecordID) error {
-	// TODO: implement
-	return nil
+	fe.Lock()
+	defer fe.Unlock()
+	nodes, err:=fe.conf.RC.NodesFind(fe.conf.Router,k)
+	if err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+	var good = 0
+	var mu sync.Mutex
+	wg.Add(len(nodes))
+	for i := range(nodes){
+		go func(){
+			defer wg.Done()
+			err1 := fe.conf.NC.Del(nodes[i],k)
+			if(err1 != nil){
+				err = err1
+			} else {
+				mu.Lock()
+				good ++
+				mu.Unlock()
+			}
+			
+		}()
+	}
+
+	wg.Wait()
+	
+	return err
 }
 
 // Get an item from the storage if an item exists for the given key.

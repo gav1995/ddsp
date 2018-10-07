@@ -63,15 +63,17 @@ func (h *MD5) Hash(k storage.RecordID, node storage.ServiceAddr) uint64 {
 // NodesFinder содержит методы и опции для нахождения узлов,
 // на которых должна храниться запись с данным ключом.
 type NodesFinder struct {
-	// TODO: implement
+	hash Hasher
 }
 
 // NewNodesFinder creates NodesFinder instance with given Hasher.
 //
 // NewNodesFinder создает NodesFinder с данным Hasher.
 func NewNodesFinder(h Hasher) NodesFinder {
-	// TODO: implement
-	return NodesFinder{}
+	
+	return NodesFinder{
+		hash: h, 
+	}
 }
 
 // NodesFind returns list of nodes where record with associated key k should be stored.
@@ -82,6 +84,28 @@ func NewNodesFinder(h Hasher) NodesFinder {
 // Возвращается не больше чем storage.ReplicationFactor nodes.
 // Возвращаемые nodes выбираются из передаваемых nodes.
 func (nf NodesFinder) NodesFind(k storage.RecordID, nodes []storage.ServiceAddr) []storage.ServiceAddr {
-	// TODO: implement
-	return nil
+	ans := make([]storage.ServiceAddr, math.min(3, len(nodes)))
+	hashAns := make([]uint64, 3)
+	var hash uint64
+	for _, v :=range(nodes) {
+		hash = nf.hash.Hash(k, v)
+		if(hash > hashAns[0]){
+			ans[2] = ans[1]
+			ans[1] = ans[0]
+			ans[0] = v
+			hashAns[2] = hashAns[1]
+			hashAns[1] = hashAns[0]
+			hashAns[0] = hash
+		} elif(hash > hashAns[1]) {
+			ans[2] = ans[1]
+			ans[1] = v
+			hashAns[2] = hashAns[1]
+			hashAns[1] = hash
+		} elsif(hash > hashAns[2]) {
+			ans[2] = v
+			hashAns[2] = hash
+		}
+
+	}
+	return ans
 }
