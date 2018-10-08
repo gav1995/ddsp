@@ -33,10 +33,10 @@ type Config struct {
 // Router is a router service.
 type Router struct {
 	sync.RWMutex
-	list []storage.ServiceAddr
-	nodes map[storage.ServiceAddr] time.Time
-	timeout time.Duration
-	addr storage.ServiceAddr
+	list        []storage.ServiceAddr
+	nodes       map[storage.ServiceAddr]time.Time
+	timeout     time.Duration
+	addr        storage.ServiceAddr
 	nodesFinder NodesFinder
 }
 
@@ -48,19 +48,21 @@ type Router struct {
 // Возвращает ошибку storage.ErrNotEnoughDaemons если в cfg.Nodes
 // меньше чем storage.ReplicationFactor nodes.
 func New(cfg Config) (*Router, error) {
-	if(len(cfg.Nodes) < storage.ReplicationFactor) {
+	if len(cfg.Nodes) < storage.ReplicationFactor {
 		return nil, storage.ErrNotEnoughDaemons
 	}
 	rout := Router{
-		nodes:make(map[storage.ServiceAddr]time.Time),
-		timeout:cfg.ForgetTimeout,
-		addr : cfg.Addr,
-		nodesFinder : cfg.NodesFinder,
-		list : cfg.Nodes,
+		nodes:       make(map[storage.ServiceAddr]time.Time),
+		timeout:     cfg.ForgetTimeout,
+		addr:        cfg.Addr,
+		nodesFinder: cfg.NodesFinder,
+		list:        cfg.Nodes,
 	}
-	for _,v := range(cfg.Nodes) {
-		rout.nodes[v] = time.Now()
+	rout.Lock()
+	for _, v := range cfg.Nodes {
+		rout.nodes[v] = time.Time{}
 	}
+	rout.Unlock()
 	return &rout, nil
 }
 
@@ -71,11 +73,13 @@ func New(cfg Config) (*Router, error) {
 // Возвращает ошибку storage.ErrUnknownDaemon если node не
 // обслуживается Router.
 func (r *Router) Heartbeat(node storage.ServiceAddr) error {
+	r.Lock()
+	defer r.Unlock()
 	_, ok := r.nodes[node]
-	if(!ok) {
+	if !ok {
 		return storage.ErrUnknownDaemon
-	} else 	{
-		r.nodes[node] = time.Now();
+	} else {
+		r.nodes[node] = time.Now()
 	}
 	return nil
 }
@@ -88,19 +92,21 @@ func (r *Router) Heartbeat(node storage.ServiceAddr) error {
 // запись с ключом k. Возвращает ошибку storage.ErrNotEnoughDaemons
 // если меньше, чем storage.MinRedundancy найдено.
 func (r *Router) NodesFind(k storage.RecordID) ([]storage.ServiceAddr, error) {
-	
-	nodes := make([]storage.ServiceAddr)
-	for i, v:=range(r.nodes) {
-		if(time.Now().Sub(v) <= r.timeout){
-			nodes.insert(i)
+
+	nodes := r.nodesFinder.NodesFind(k, r.list)
+
+	var ans []storage.ServiceAddr
+	r.RLock()
+	defer r.RUnlock()
+	for _, v := range nodes {
+		if time.Now().Sub(r.nodes[v]) < r.timeout {
+			ans = append(ans, v)
 		}
 	}
-	ans := r.nodesFinder.NodesFind(k, nodes)
-	if( len(ans) < storage.MinRedundancy)
-	{
+
+	if len(ans) < storage.MinRedundancy {
 		return nil, storage.ErrNotEnoughDaemons
 	}
-
 	return ans, nil
 }
 
@@ -108,6 +114,7 @@ func (r *Router) NodesFind(k storage.RecordID) ([]storage.ServiceAddr, error) {
 //
 // List возвращает cписок всех node, обслуживаемых Router.
 func (r *Router) List() []storage.ServiceAddr {
-	
+	// r.RLock()
+	// defer r.RUnlock()
 	return r.list
 }

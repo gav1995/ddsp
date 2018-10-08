@@ -70,9 +70,9 @@ type NodesFinder struct {
 //
 // NewNodesFinder создает NodesFinder с данным Hasher.
 func NewNodesFinder(h Hasher) NodesFinder {
-	
+
 	return NodesFinder{
-		hash: h, 
+		hash: h,
 	}
 }
 
@@ -84,26 +84,22 @@ func NewNodesFinder(h Hasher) NodesFinder {
 // Возвращается не больше чем storage.ReplicationFactor nodes.
 // Возвращаемые nodes выбираются из передаваемых nodes.
 func (nf NodesFinder) NodesFind(k storage.RecordID, nodes []storage.ServiceAddr) []storage.ServiceAddr {
-	ans := make([]storage.ServiceAddr, math.min(3, len(nodes)))
-	hashAns := make([]uint64, 3)
+	size := storage.ReplicationFactor
+	if size >= len(nodes) {
+		size = len(nodes)
+	}
+	ans := make([]storage.ServiceAddr, size)
+	hashAns := make([]uint64, size)
 	var hash uint64
-	for _, v :=range(nodes) {
+	for _, v := range nodes {
 		hash = nf.hash.Hash(k, v)
-		if(hash > hashAns[0]){
-			ans[2] = ans[1]
-			ans[1] = ans[0]
-			ans[0] = v
-			hashAns[2] = hashAns[1]
-			hashAns[1] = hashAns[0]
-			hashAns[0] = hash
-		} elif(hash > hashAns[1]) {
-			ans[2] = ans[1]
-			ans[1] = v
-			hashAns[2] = hashAns[1]
-			hashAns[1] = hash
-		} elsif(hash > hashAns[2]) {
-			ans[2] = v
-			hashAns[2] = hash
+		for i := len(ans) - 1; i >= 0 && (hash > hashAns[i] || (hash == hashAns[i] && v > ans[i])); i-- {
+			if i+1 < len(ans) {
+				ans[i+1] = ans[i]
+				hashAns[i+1] = hashAns[i]
+			}
+			ans[i] = v
+			hashAns[i] = hash
 		}
 
 	}
