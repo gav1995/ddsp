@@ -78,9 +78,10 @@ func (r *Router) Heartbeat(node storage.ServiceAddr) error {
 	_, ok := r.nodes[node]
 	if !ok {
 		return storage.ErrUnknownDaemon
-	} else {
-		r.nodes[node] = time.Now()
 	}
+
+	r.nodes[node] = time.Now()
+
 	return nil
 }
 
@@ -114,7 +115,5 @@ func (r *Router) NodesFind(k storage.RecordID) ([]storage.ServiceAddr, error) {
 //
 // List возвращает cписок всех node, обслуживаемых Router.
 func (r *Router) List() []storage.ServiceAddr {
-	// r.RLock()
-	// defer r.RUnlock()
 	return r.list
 }

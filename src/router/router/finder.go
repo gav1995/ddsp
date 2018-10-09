@@ -83,9 +83,10 @@ func NewNodesFinder(h Hasher) NodesFinder {
 // NodesFind возвращает список nodes, на которых должна храниться запись с ключом k.
 // Возвращается не больше чем storage.ReplicationFactor nodes.
 // Возвращаемые nodes выбираются из передаваемых nodes.
+
 func (nf NodesFinder) NodesFind(k storage.RecordID, nodes []storage.ServiceAddr) []storage.ServiceAddr {
 	size := storage.ReplicationFactor
-	if size >= len(nodes) {
+	if size > len(nodes) {
 		size = len(nodes)
 	}
 	ans := make([]storage.ServiceAddr, size)
