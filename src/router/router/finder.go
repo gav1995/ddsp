@@ -3,6 +3,7 @@ package router
 import (
 	"crypto/md5"
 	"encoding/binary"
+	"sort"
 
 	"storage"
 )
@@ -84,25 +85,31 @@ func NewNodesFinder(h Hasher) NodesFinder {
 // Возвращается не больше чем storage.ReplicationFactor nodes.
 // Возвращаемые nodes выбираются из передаваемых nodes.
 
+type pair struct {
+	addr storage.ServiceAddr
+	hash uint64
+}
+
 func (nf NodesFinder) NodesFind(k storage.RecordID, nodes []storage.ServiceAddr) []storage.ServiceAddr {
 	size := storage.ReplicationFactor
 	if size > len(nodes) {
 		size = len(nodes)
 	}
-	ans := make([]storage.ServiceAddr, size)
-	hashAns := make([]uint64, size)
-	var hash uint64
-	for _, v := range nodes {
-		hash = nf.hash.Hash(k, v)
-		for i := len(ans) - 1; i >= 0 && (hash > hashAns[i] || (hash == hashAns[i] && v > ans[i])); i-- {
-			if i+1 < len(ans) {
-				ans[i+1] = ans[i]
-				hashAns[i+1] = hashAns[i]
-			}
-			ans[i] = v
-			hashAns[i] = hash
-		}
+	var hashes []pair
 
+	for _, node := range nodes {
+		hashes = append(hashes, pair{node, nf.hash.Hash(k, node)})
 	}
+
+	sort.Slice(hashes, func(i int, j int) bool {
+		return hashes[i].hash > hashes[j].hash || (hashes[i].hash == hashes[j].hash && hashes[i].addr > hashes[j].addr)
+	})
+
+	ans := make([]storage.ServiceAddr, size)
+
+	for i := 0; i < len(ans); i++ {
+		ans[i] = hashes[i].addr
+	}
+
 	return ans
 }
