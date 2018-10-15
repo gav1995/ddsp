@@ -160,12 +160,12 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 		ans := <-ch
 		if ans.err != nil {
 			err[ans.err]++
-			if err[ans.err]+1 == storage.ReplicationFactor {
+			if err[ans.err] == storage.MinRedundancy {
 				return nil, ans.err
 			}
 		} else {
 			values[string(ans.val)]++
-			if values[string(ans.val)]+1 == storage.ReplicationFactor {
+			if values[string(ans.val)] == storage.MinRedundancy {
 				return ans.val, nil
 			}
 		}
